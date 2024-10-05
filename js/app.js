@@ -106,14 +106,14 @@ async function discardConversation(sessionId) {
   }
   for (const c of countList) {
     if (c.totalSize > OPENAI_MAX_TOKEN) {
-      await MsgTable.deleteOne({ _id: c.msgId });
+      await MsgTable.deleteMany({ _id: c.msgId });
     }
   }
 }
 
 // 清除历史会话
 async function clearConversation(sessionId) {
-  return await MsgTable.deleteOne({ sessionId });
+  return await MsgTable.deleteMany({ sessionId });
 }
 
 // 指令处理
@@ -290,11 +290,7 @@ async function handleReply(userInput, sessionId, messageId, eventId) {
   return { code: 0 };
 }
 
-
-app.use(express.json());
-
-app.post('/webhook', async (req, res) => {
-  const params = req.body;
+async function bot_worker(params){
   // 如果存在 encrypt 则说明配置了 encrypt key
   if (params.encrypt) {
     logger("user enable encrypt key");
@@ -319,7 +315,6 @@ app.post('/webhook', async (req, res) => {
   //   logger(doctor())
   // }
 
-
   // 处理飞书开放平台的事件回调
   if ((params.header.event_type === "im.message.receive_v1")) {
     let eventId = params.header.event_id;
@@ -332,7 +327,6 @@ app.post('/webhook', async (req, res) => {
     const count = await EventDB.countDocuments({ event_id: eventId });
     if (count != 0) {
       logger("skip repeat event");
-      return { code: 1 };
     }
     await EventDB.insertOne({ event_id: eventId });
 
@@ -342,11 +336,10 @@ app.post('/webhook', async (req, res) => {
       if (params.event.message.message_type != "text") {
         await reply(messageId, "暂不支持其他类型的提问");
         logger("skip and reply not support");
-        return { code: 0 };
       }
       // 是文本消息，直接回复
       const userInput = JSON.parse(params.event.message.content);
-      return await handleReply(userInput, sessionId, messageId, eventId);
+      await handleReply(userInput, sessionId, messageId, eventId);
     }
 
     // 群聊，需要 @ 机器人
@@ -357,22 +350,28 @@ app.post('/webhook', async (req, res) => {
         params.event.message.mentions.length === 0
       ) {
         logger("not process message without mention");
-        return { code: 0 };
+
       }
       // 没有 mention 机器人，则退出。
       if (params.event.message.mentions[0].name != FEISHU_BOTNAME) {
         logger("bot name not equal first mention name ");
-        return { code: 0 };
       }
       const userInput = JSON.parse(params.event.message.content);
-      return await handleReply(userInput, sessionId, messageId, eventId);
+      await handleReply(userInput, sessionId, messageId, eventId);
     }
   }
 
   logger("return without other log");
-  return {
-    code: 2,
-  };
+}
+
+
+
+app.use(express.json());
+
+app.post('/webhook', (req, res) => {
+  res.status(200).send();
+  const params = req.body;
+  bot_worker(params);
 });
 
 app.listen(PORT, () => {
