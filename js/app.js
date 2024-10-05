@@ -30,7 +30,6 @@ const openai = new OpenAIApi({
 const client = new lark.Client({
   appId: FEISHU_APP_ID,
   appSecret: FEISHU_APP_SECRET,
-  disableTokenCache: false,
 });
 
 // 日志辅助函数，请贡献者使用此函数打印关键日志
@@ -38,31 +37,23 @@ function logger(param) {
   console.debug(`[FSbot]`, param);
 }
 
-async function getOpenaiImageUrl(prompt){
-  const resp = await openai.createImage({
-    prompt:prompt,
-    n:1,
-    size:"1024x1024"
-  });
-  return resp.data.data[0].url;
-}
 
 // 回复消息
 async function reply(messageId, content) {
-  try{
+  try {
     return await client.im.message.reply({
-    path: {
-      message_id: messageId,
-    },
-    data: {
-      content: JSON.stringify({
-        text: content,
-      }),
-      msg_type: "text",
-    },
-  });
-  } catch(e){
-    logger("send message to feishu error",e,messageId,content);
+      path: {
+        message_id: messageId,
+      },
+      data: {
+        content: JSON.stringify({
+          text: content,
+        }),
+        msg_type: "text",
+      },
+    });
+  } catch (e) {
+    logger("send message to feishu error", e, messageId, content);
   }
 }
 
@@ -70,23 +61,23 @@ async function reply(messageId, content) {
 // 根据sessionId构造用户会话
 async function buildConversation(sessionId, question) {
   let prompt = [];
-  
+
   // 从 MsgTable 表中取出历史记录构造 question
   const historyMsgs = await MsgTable.find({ sessionId }).toArray();
   for (const conversation of historyMsgs) {
-      // {"role": "system", "content": "You are a helpful assistant."},
-      prompt.push({"role": "user", "content": conversation.question})
-      prompt.push({"role": "assistant", "content": conversation.answer})
+    // {"role": "system", "content": "You are a helpful assistant."},
+    prompt.push({ "role": "user", "content": conversation.question })
+    prompt.push({ "role": "assistant", "content": conversation.answer })
   }
 
   // 拼接最新 question
-  prompt.push({"role": "user", "content": question})
+  prompt.push({ "role": "user", "content": question })
   return prompt;
 }
 
 // 保存用户会话
 async function saveConversation(sessionId, question, answer) {
-  const msgSize =  question.length + answer.length
+  const msgSize = question.length + answer.length
   const result = await MsgTable.insertOne({
     sessionId,
     question,
@@ -115,31 +106,23 @@ async function discardConversation(sessionId) {
   }
   for (const c of countList) {
     if (c.totalSize > OPENAI_MAX_TOKEN) {
-      await MsgTable.where({_id: c.msgId}).delete();
+      await MsgTable.deleteOne({ _id: c.msgId });
     }
   }
 }
 
 // 清除历史会话
 async function clearConversation(sessionId) {
-  return await MsgTable.where({ sessionId }).delete();
+  return await MsgTable.deleteOne({ sessionId });
 }
 
 // 指令处理
 async function cmdProcess(cmdParams) {
-  if(cmdParams && cmdParams.action.startsWith("/image")){
-    len = cmdParams.action.length;
-    prompt = cmdParams.action.substring(7,len);
-    logger(prompt)
-    url = await getOpenaiImageUrl(prompt);
-    await reply(cmdParams.messageId,url);
-    return;
-  }
   switch (cmdParams && cmdParams.action) {
     case "/help":
       await cmdHelp(cmdParams.messageId);
       break;
-    case "/clear": 
+    case "/clear":
       await cmdClear(cmdParams.sessionId, cmdParams.messageId);
       break;
     default:
@@ -147,7 +130,7 @@ async function cmdProcess(cmdParams) {
       break;
   }
   return { code: 0 }
-} 
+}
 
 // 帮助指令
 async function cmdHelp(messageId) {
@@ -155,8 +138,6 @@ async function cmdHelp(messageId) {
 
 Usage:
     /clear    清除上下文
-    /help     获取更多帮助
-    /image ${提示词} 根据提示词生成图片
   `
   await reply(messageId, helpText);
 }
@@ -187,18 +168,18 @@ async function getOpenAIReply(prompt) {
     timeout: 50000
   };
 
-  try{
-      const response = await axios(config);
-    
-      if (response.status === 429) {
-        return '问题太多了，我有点眩晕，请稍后再试';
-      }
-      // 去除多余的换行
-      return response.data.choices[0].message.content.replace("\n\n", "");
-    
-  }catch(e){
-     logger(e.response.data)
-     return "问题太难了 出错了. (uДu〃).";
+  try {
+    const response = await axios(config);
+
+    if (response.status === 429) {
+      return '问题太多了，我有点眩晕，请稍后再试';
+    }
+    // 去除多余的换行
+    return response.data.choices[0].message.content.replace("\n\n", "");
+
+  } catch (e) {
+    logger(e.response.data)
+    return "问题太难了 出错了. (uДu〃).";
   }
 
 }
@@ -273,10 +254,10 @@ async function doctor() {
     code: 0,
     message: {
       zh_CN:
-      "✅ 配置成功，接下来你可以在飞书应用当中使用机器人来完成你的工作。",
+        "✅ 配置成功，接下来你可以在飞书应用当中使用机器人来完成你的工作。",
       en_US:
-      "✅ Configuration is correct, you can use this bot in your FeiShu App",
-      
+        "✅ Configuration is correct, you can use this bot in your FeiShu App",
+
     },
     meta: {
       FEISHU_APP_ID,
@@ -292,7 +273,7 @@ async function handleReply(userInput, sessionId, messageId, eventId) {
   logger("question: " + question);
   const action = question.trim();
   if (action.startsWith("/")) {
-    return await cmdProcess({action, sessionId, messageId});
+    return await cmdProcess({ action, sessionId, messageId });
   }
   const prompt = await buildConversation(sessionId, question);
   const openaiResponse = await getOpenAIReply(prompt);
@@ -300,9 +281,12 @@ async function handleReply(userInput, sessionId, messageId, eventId) {
   await reply(messageId, openaiResponse);
 
   // update content to the event record
-  const evt_record = await EventDB.findOne({ event_id: eventId });
-  evt_record.content = userInput.text;
-  await EventDB.insertOne(evt_record);
+  await EventDB.findOneAndUpdate(
+    { event_id: eventId }, // 查询条件
+    { $set: { content: userInput.text } }, // 更新内容
+    { new: true, upsert: true } // 选项：返回更新后的文档，如果不存在则插入新文档
+  );
+  
   return { code: 0 };
 }
 
@@ -311,8 +295,6 @@ app.use(express.json());
 
 app.post('/webhook', async (req, res) => {
   const params = req.body;
-  // logger("params: " + JSON.stringify(params));
-  
   // 如果存在 encrypt 则说明配置了 encrypt key
   if (params.encrypt) {
     logger("user enable encrypt key");
@@ -337,7 +319,7 @@ app.post('/webhook', async (req, res) => {
   //   logger(doctor())
   // }
 
-  
+
   // 处理飞书开放平台的事件回调
   if ((params.header.event_type === "im.message.receive_v1")) {
     let eventId = params.header.event_id;
