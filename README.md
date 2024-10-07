@@ -18,13 +18,13 @@ https://github.com/essesoul/FeishuAiBot
 
 访问 [开发者后台](https://open.feishu.cn/app?lang=zh-CN)，创建一个名为 **ChatGPT** 的应用，并上传应用头像。创建完成后，访问【凭证与基础信息】页面，复制 APPID 和 Secret 备用。
 
-![image-20230210012031179](assets\202302100120339.png)
+![image-20230210012031179](assets/202302100120339.png)
 
 #### 开启机器人能力
 
 打开应用的机器人应用功能
 
-![image-20230210012110735](assets\202302100121008.png)
+![image-20230210012110735](assets/202302100121008.png)
 
 #### 修改配置文件
 
