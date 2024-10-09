@@ -6,6 +6,7 @@ import os
 import json
 import requests
 from dotenv import load_dotenv
+from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody, ReplyMessageResponse
 
 load_dotenv(verbose=True)
 app = Flask(__name__)
@@ -18,6 +19,10 @@ OPENAI_KEY = os.getenv('HUNYUAN_API_KEY')
 OPENAI_MODEL = os.getenv('MODEL', 'hunyuan-pro')
 OPENAI_MAX_TOKEN = int(os.getenv('MAX_TOKEN', 1024))
 
+# https://github.com/larksuite/oapi-sdk-python
+import lark_oapi as lark
+
+
 
 # 日志辅助函数
 def logger(param):
@@ -26,17 +31,26 @@ def logger(param):
 
 # 回复消息
 def reply(message_id, content):
-    url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/reply"
-    headers = {
-        "Authorization": f"Bearer {FEISHU_APP_SECRET}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "content": json.dumps({"text": content}),
-        "msg_type": "text"
-    }
-    response = requests.post(url, headers=headers, json=data)
-    return response.json()
+    client = lark.Client.builder() \
+        .app_id(FEISHU_APP_ID) \
+        .app_secret(FEISHU_APP_SECRET) \
+        .build()
+    reply_request = ReplyMessageRequest.builder() \
+        .message_id(message_id) \
+        .request_body(ReplyMessageRequestBody.builder()
+                      .content(json.dumps({"text": content}))
+                      .msg_type("text")
+                      .reply_in_thread(False)
+                      # .uuid("")
+                      .build()) \
+        .build()
+    response: ReplyMessageResponse = client.im.v1.message.reply(reply_request)
+    if not response.success():
+        lark.logger.error(
+            f"client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}")
+        return
+    lark.logger.info(lark.JSON.marshal(response.data, indent=4))
+    return
 
 
 # 构造用户会话
@@ -71,6 +85,7 @@ def handle_reply(user_input, message_id):
     reply(message_id, openai_response)
     return {"code": 0}
 
+
 def webhook_task(req_json):
     params = req_json
     if params.get('encrypt'):
@@ -93,12 +108,12 @@ def webhook_task(req_json):
             user_input = json.loads(params['event']['message']['content'])
             handle_reply(user_input, message_id)
 
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    threading.Thread(target=webhook_task,args=(request.json,)).start()
-    return jsonify({"code": 200}),200
-
+    threading.Thread(target=webhook_task, args=(request.json,)).start()
+    return jsonify({"code": 200}), 200
 
 
 if __name__ == '__main__':
-    app.run(port=15080, debug=True)
+    app.run(port=15080, debug=False)
